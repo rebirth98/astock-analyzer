@@ -333,4 +333,5 @@ if __name__ == '__main__':
     print(f"[OK] DeepSeek: {'configured' if DEEPSEEK_API_KEY else 'NOT CONFIGURED'}")
     print(f"[OK] Data source: Sina Finance API")
     print("=" * 50)
-    app.run(debug=False, host='0.0.0.0', port=5099)
+    port = int(os.environ.get('PORT', 5099))
+    app.run(debug=False, host='0.0.0.0', port=port)
