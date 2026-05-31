@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A股智能分析助手 - 布局预览</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #F2F2F2;
+    --card: #FFFFFF;
+    --text: #1A1A1A;
+    --text-secondary: #666;
+    --text-muted: #999;
+    --border: #D0D0D0;
+    --border-light: #E5E5E5;
+    --accent: #1A1A1A;
+    --bull: #C0392B;
+    --bull-bg: #FDF0EF;
+    --bear: #1E8449;
+    --bear-bg: #EDF7F0;
+    --neutral: #888;
+    --neutral-bg: #F5F5F5;
+    --ticker-bg: #1A1A1A;
+    --shadow: 0 1px 2px rgba(0,0,0,0.06);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 14px;
+    overflow-x: hidden;
+  }
+
+  /* ===== 未登录时的模糊遮罩 ===== */
+  .app-blur {
+    filter: blur(5px);
+    pointer-events: none;
+    user-select: none;
+    opacity: 0.5;
+    transition: all 0.3s;
+  }
+  .app-blur.off {
+    filter: blur(0);
+    pointer-events: auto;
+    user-select: auto;
+    opacity: 1;
+  }
+
+  /* ===== 卡片式滚动行情条 ===== */
+  .ticker-section {
+    background: #111;
+    padding: 14px 0;
+    overflow: hidden;
+    position: relative;
+  }
+  .ticker-section .ticker-header {
+    display: flex; align-items: center; padding: 0 20px; margin-bottom: 10px;
+  }
+  .ticker-section .ticker-header .ticker-title {
+    color: #FFF; font-size: 14px; font-weight: 700; letter-spacing: 1px;
+  }
+  .ticker-section .ticker-header .ticker-title .dot { color: #FF6B6B; animation: blink 1s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .ticker-scroll-wrap {
+    overflow: hidden; position: relative; width: 100%;
+  }
+  .ticker-track {
+    display: flex; gap: 12px;
+    animation: tickerScroll 60s linear infinite;
+    padding: 0 12px;
+  }
+  @keyframes tickerScroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+  .ticker-card {
+    flex-shrink: 0;
+    width: 175px; height: 95px;
+    background: #222;
+    border-radius: 10px;
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid #333;
+    display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .ticker-card:hover { background: #2A2A2A; border-color: #555; transform: translateY(-2px); }
+  .ticker-card .tc-top { display: flex; justify-content: space-between; align-items: flex-start; }
+  .ticker-card .tc-name { color: #CCC; font-size: 12px; font-weight: 600; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ticker-card .tc-code { color: #777; font-size: 10px; }
+  .ticker-card .tc-price { color: #FFF; font-size: 20px; font-weight: 700; margin: 4px 0; }
+  .ticker-card .tc-bottom { display: flex; justify-content: space-between; align-items: center; }
+  .ticker-card .tc-change {
+    font-size: 13px; font-weight: 700; padding: 3px 8px; border-radius: 4px;
+  }
+  .ticker-card .tc-change.up { color: #FF6B6B; background: rgba(255,107,107,0.15); }
+  .ticker-card .tc-change.down { color: #5DDE8E; background: rgba(93,222,142,0.15); }
+  .ticker-card .tc-extra { color: #777; font-size: 10px; }
+  .ticker-card .tc-bar {
+    height: 2px; background: #333; border-radius: 1px; margin-top: 4px; overflow: hidden;
+  }
+  .ticker-card .tc-bar-fill { height: 100%; border-radius: 1px; transition: width 0.3s; }
+  .ticker-card .tc-bar-fill.up { background: #FF6B6B; }
+  .ticker-card .tc-bar-fill.down { background: #5DDE8E; }
+
+  /* ===== 顶部导航 ===== */
+  .topbar {
+    background: #FFF;
+    padding: 0 20px; height: 52px;
+    display: flex; align-items: center; gap: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar .logo { font-size: 17px; font-weight: 700; white-space: nowrap; color: #1A1A1A; }
+  .topbar .logo .dot { color: #C0392B; }
+  .topbar .search-box { display: flex; gap: 0; flex: 1; max-width: 440px; }
+  .topbar .search-box input {
+    flex: 1; height: 34px; padding: 0 12px;
+    border: 1.5px solid var(--border); border-right: none;
+    border-radius: 4px 0 0 4px; font-size: 13px; outline: none;
+    font-family: inherit;
+  }
+  .topbar .search-box input:focus { border-color: #555; }
+  .topbar .search-box button {
+    height: 34px; padding: 0 18px;
+    background: #1A1A1A; color: #FFF;
+    border: 1.5px solid #1A1A1A; border-radius: 0 4px 4px 0;
+    font-size: 13px; cursor: pointer; font-weight: 600;
+    white-space: nowrap; font-family: inherit;
+  }
+  .topbar .search-box button:hover { background: #333; border-color: #333; }
+  .topbar .hot-tags { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+  .topbar .hot-tags span { color: var(--text-muted); font-size: 11px; }
+  .topbar .hot-tags a {
+    color: #555; font-size: 12px; text-decoration: none;
+    padding: 3px 8px; background: #F0F0F0; border-radius: 3px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .topbar .hot-tags a:hover { background: #E0E0E0; color: #1A1A1A; }
+
+  /* ===== 主体三栏 ===== */
+  .app-body { display: flex; min-height: calc(100vh - 88px - 125px); }
+
+  /* ===== 左侧登录栏 ===== */
+  .login-panel {
+    width: 240px; min-width: 240px;
+    background: #FFF;
+    border-right: 1px solid var(--border-light);
+    padding: 24px 18px;
+    display: flex; flex-direction: column;
+    box-shadow: 2px 0 8px rgba(0,0,0,0.03);
+    z-index: 2;
+  }
+  .login-panel .login-header {
+    text-align: center; margin-bottom: 20px;
+  }
+  .login-panel .login-header .avatar {
+    width: 64px; height: 64px; border-radius: 50%;
+    background: #FFE4C4;
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 10px; overflow: hidden;
+    border: 2px solid #F0D0A0;
+  }
+  .login-panel .login-header .avatar img {
+    width: 100%; height: 100%; object-fit: cover;
+  }
+  .login-panel .login-header h3 { font-size: 15px; color: var(--text); font-weight: 700; }
+  .login-panel .login-header p { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+  .login-panel .form-group { margin-bottom: 14px; }
+  .login-panel .form-group label {
+    display: block; font-size: 11px; color: var(--text-secondary);
+    margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .login-panel .form-group input {
+    width: 100%; height: 38px; padding: 0 12px;
+    border: 1.5px solid var(--border-light); border-radius: 6px;
+    font-size: 14px; outline: none; font-family: inherit;
+    transition: border-color 0.2s;
+  }
+  .login-panel .form-group input:focus { border-color: #555; }
+  .login-panel .form-group input:read-only { background: #F9F9F9; color: #555; }
+  .login-panel .login-btn {
+    width: 100%; height: 40px;
+    background: #1A1A1A; color: #FFF;
+    border: none; border-radius: 6px;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+    font-family: inherit; letter-spacing: 1px;
+    transition: all 0.2s; margin-top: 4px;
+  }
+  .login-panel .login-btn:hover { background: #333; }
+  .login-panel .login-hint {
+    text-align: center; font-size: 10px; color: var(--text-muted);
+    margin-top: 12px; line-height: 1.6;
+  }
+  .login-panel .login-divider {
+    display: flex; align-items: center; gap: 10px;
+    margin: 16px 0; color: var(--text-muted); font-size: 10px;
+  }
+  .login-panel .login-divider::before,
+  .login-panel .login-divider::after {
+    content: ''; flex: 1; height: 1px; background: var(--border-light);
+  }
+
+  /* 登录后状态 */
+  .login-panel .logged-in-status {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; background: #F7FDF7;
+    border: 1px solid #C8E6C9; border-radius: 8px;
+    margin-bottom: 12px;
+  }
+  .login-panel .logged-in-status .status-dot {
+    width: 8px; height: 8px; background: #27AE60; border-radius: 50%; animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .login-panel .logged-in-status .status-text { font-size: 12px; color: #1E8449; font-weight: 600; }
+  .login-panel .logout-btn {
+    width: 100%; height: 34px;
+    background: none; border: 1px solid var(--border-light); border-radius: 6px;
+    font-size: 12px; color: var(--text-muted); cursor: pointer;
+    font-family: inherit; transition: all 0.2s;
+  }
+  .login-panel .logout-btn:hover { border-color: #C0392B; color: #C0392B; }
+
+  /* 未登录时登录框高亮 */
+  .login-panel.not-logged-in {
+    background: #FAFAFA;
+  }
+  .login-panel.not-logged-in .login-btn {
+    background: #C0392B;
+    animation: glow 2s ease-in-out infinite;
+  }
+  @keyframes glow {
+    0%,100% { box-shadow: 0 0 8px rgba(192,57,43,0.2); }
+    50% { box-shadow: 0 0 20px rgba(192,57,43,0.4); }
+  }
+
+  .main-content {
+    flex: 1; padding: 16px 20px;
+    max-width: calc(100% - 230px - 240px); overflow-y: auto;
+  }
+
+  /* ===== 预测置顶区 ===== */
+  .predictions-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .pred-card {
+    background: var(--card);
+    border: 1.5px solid var(--border-light);
+    border-radius: 6px;
+    padding: 14px;
+    text-align: center;
+    box-shadow: var(--shadow);
+    transition: border-color 0.15s;
+  }
+  .pred-card.bullish { border-left: 3px solid var(--bull); }
+  .pred-card.bearish { border-left: 3px solid var(--bear); }
+  .pred-card.neutral { border-left: 3px solid var(--neutral); }
+  .pred-card .pred-label { font-size: 11px; color: var(--text-muted); margin-bottom: 2px; font-weight: 500; }
+  .pred-card .pred-icon { font-size: 22px; margin: 4px 0; }
+  .pred-card .pred-direction { font-size: 14px; font-weight: 700; margin-bottom: 2px; }
+  .pred-card.bullish .pred-direction { color: var(--bull); }
+  .pred-card.bearish .pred-direction { color: var(--bear); }
+  .pred-card.neutral .pred-direction { color: var(--neutral); }
+  .pred-card .pred-confidence { font-size: 11px; color: var(--text-secondary); }
+  .pred-card .pred-bar { height: 4px; background: #E8E8E8; border-radius: 2px; margin-top: 7px; overflow: hidden; }
+  .pred-card .pred-bar-fill { height: 100%; border-radius: 2px; }
+  .pred-card.bullish .pred-bar-fill { background: var(--bull); }
+  .pred-card.bearish .pred-bar-fill { background: var(--bear); }
+  .pred-card.neutral .pred-bar-fill { background: var(--neutral); }
+  .pred-card .pred-summary { font-size: 10px; color: var(--text-muted); margin-top: 5px; line-height: 1.4; }
+
+  /* ===== 行情摘要条 ===== */
+  .quote-strip {
+    background: var(--card);
+    border: 1px solid var(--border-light);
+    border-radius: 6px;
+    padding: 10px 16px;
+    margin-bottom: 12px;
+    display: flex; align-items: center; gap: 18px;
+    flex-wrap: wrap;
+    box-shadow: var(--shadow);
+    font-size: 13px;
+  }
+  .quote-strip .stock-name { font-size: 15px; font-weight: 700; color: var(--text); }
+  .quote-strip .stock-code { font-size: 11px; color: var(--text-muted); }
+  .quote-strip .price { font-size: 20px; font-weight: 700; }
+  .quote-strip .price.up { color: var(--bull); }
+  .quote-strip .price.down { color: var(--bear); }
+  .quote-strip .change { font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 3px; }
+  .quote-strip .change.up { color: var(--bull); background: var(--bull-bg); }
+  .quote-strip .change.down { color: var(--bear); background: var(--bear-bg); }
+  .quote-strip .info-item { font-size: 11px; color: var(--text-secondary); }
+  .quote-strip .info-item strong { color: var(--text); margin-left: 3px; }
+
+  /* ===== 区块标题 ===== */
+  .section-title {
+    font-size: 14px; font-weight: 700; color: var(--text);
+    margin: 14px 0 8px 0;
+    padding-left: 8px; border-left: 3px solid #1A1A1A;
+    letter-spacing: 0.5px;
+  }
+
+  /* ===== K线图区 ===== */
+  .chart-card {
+    background: var(--card);
+    border: 1px solid var(--border-light);
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    box-shadow: var(--shadow);
+  }
+  .chart-card .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .chart-card .chart-header h4 { font-size: 13px; font-weight: 700; }
+  .chart-card .chart-legend { display: flex; gap: 14px; font-size: 10px; color: var(--text-secondary); }
+  .chart-card .chart-legend span { display: flex; align-items: center; gap: 4px; }
+  .chart-card .chart-legend .leg-dot { width: 18px; height: 1.5px; display: inline-block; }
+  .chart-wrapper { width: 100%; height: 300px; position: relative; }
+  .chart-wrapper canvas { width: 100% !important; }
+
+  /* ===== 分析依据 ===== */
+  .analysis-card {
+    background: var(--card);
+    border: 1px solid var(--border-light);
+    border-radius: 6px;
+    padding: 14px 18px;
+    margin-bottom: 8px;
+    box-shadow: var(--shadow);
+  }
+  .analysis-card h4 {
+    font-size: 12px; color: #1A1A1A; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 5px;
+    font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+    padding-bottom: 6px; border-bottom: 1px solid var(--border-light);
+  }
+  .analysis-card .reason-list { list-style: none; }
+  .analysis-card .reason-list li {
+    padding: 5px 0; font-size: 12.5px; line-height: 1.7;
+    border-bottom: 1px solid #F5F5F5;
+  }
+  .analysis-card .reason-list li:last-child { border-bottom: none; }
+  .analysis-card .reason-list li .idx {
+    display: inline-block; width: 18px; height: 18px;
+    background: #1A1A1A; color: #FFF; border-radius: 50%;
+    text-align: center; line-height: 18px; font-size: 10px;
+    margin-right: 8px; font-weight: 700;
+  }
+
+  /* ===== 资讯区 ===== */
+  .news-card {
+    background: var(--card);
+    border: 1px solid var(--border-light);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin-bottom: 10px;
+    box-shadow: var(--shadow);
+  }
+  .news-list { list-style: none; }
+  .news-list li {
+    display: flex; align-items: baseline; gap: 8px;
+    padding: 6px 0; border-bottom: 1px solid #F5F5F5;
+    font-size: 12.5px;
+  }
+  .news-list li:last-child { border-bottom: none; }
+  .news-list li .news-time { font-size: 10px; color: var(--text-muted); white-space: nowrap; min-width: 55px; }
+  .news-list li .news-title { flex: 1; cursor: pointer; line-height: 1.6; }
+  .news-list li .news-title:hover { color: #555; text-decoration: underline; }
+  .news-list li .news-source { font-size: 9px; color: var(--text-muted); background: #F2F2F2; padding: 1px 5px; border-radius: 2px; white-space: nowrap; }
+
+  /* ===== 免责声明 ===== */
+  .disclaimer {
+    background: #FFF; border: 1px solid var(--border-light); border-left: 3px solid #888;
+    border-radius: 4px; padding: 8px 14px; font-size: 11px; color: var(--text-muted);
+    margin-top: 6px; margin-bottom: 16px;
+  }
+
+  /* ===== 右侧历史栏 ===== */
+  .history-panel {
+    width: 230px; min-width: 230px;
+    background: #FAFAFA;
+    border-left: 1px solid var(--border-light);
+    padding: 14px 10px;
+    overflow-y: auto;
+    display: flex; flex-direction: column;
+  }
+  .history-panel h3 {
+    font-size: 13px; font-weight: 700; color: var(--text);
+    margin-bottom: 10px; padding-bottom: 8px;
+    border-bottom: 1.5px solid #1A1A1A; letter-spacing: 1px;
+  }
+  .history-panel .empty-state { text-align: center; color: var(--text-muted); font-size: 11px; padding: 25px 0; line-height: 1.8; }
+  .history-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px; margin-bottom: 3px;
+    background: #FFF; border: 1px solid var(--border-light);
+    border-radius: 4px;
+    cursor: pointer; transition: all 0.12s;
+    box-shadow: var(--shadow);
+  }
+  .history-item:hover { border-color: #888; background: #F8F8F8; }
+  .history-item.active { border-left: 3px solid #1A1A1A; }
+  .history-item .hi-info { flex: 1; min-width: 0; }
+  .history-item .hi-code { font-size: 12px; font-weight: 700; color: var(--text); }
+  .history-item .hi-name { font-size: 10px; color: var(--text-muted); }
+  .history-item .hi-change { font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 2px; white-space: nowrap; }
+  .history-item .hi-change.up { color: var(--bull); background: var(--bull-bg); }
+  .history-item .hi-change.down { color: var(--bear); background: var(--bear-bg); }
+  .history-item .hi-delete { font-size: 12px; color: #BBB; cursor: pointer; padding: 2px 5px; border-radius: 2px; opacity: 0.5; margin-left: 2px; background: none; border: none; }
+  .history-item .hi-delete:hover { opacity: 1; color: #C0392B; }
+  .clear-all { margin-top: auto; padding: 6px; background: none; border: 1px dashed #CCC; color: #999; border-radius: 4px; font-size: 11px; cursor: pointer; text-align: center; }
+  .clear-all:hover { border-color: #888; color: #555; }
+
+  /* ===== 分析进度区 ===== */
+  .progress-container {
+    background: var(--card);
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    padding: 24px 28px;
+    box-shadow: var(--shadow);
+  }
+  .progress-header {
+    display: flex; align-items: center; gap: 16px;
+    margin-bottom: 20px; padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-light);
+  }
+  .progress-spinner {
+    width: 40px; height: 40px;
+    border: 3px solid #E8E8E8;
+    border-top-color: #1A1A1A;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .progress-title { font-size: 16px; font-weight: 700; color: var(--text); }
+  .progress-title span { color: var(--text-secondary); }
+  .progress-subtitle { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .progress-steps { margin-bottom: 16px; }
+  .progress-step {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 0; font-size: 13px; color: var(--text-muted);
+    transition: all 0.3s;
+  }
+  .progress-step .step-icon { width: 22px; text-align: center; font-size: 14px; }
+  .progress-step .step-text { flex: 1; }
+  .progress-step .step-status { font-size: 11px; min-width: 50px; text-align: right; }
+  .progress-step.done { color: var(--text); }
+  .progress-step.done .step-icon { animation: none; }
+  .progress-step.active { color: var(--text); font-weight: 600; }
+  .progress-step.active .step-icon { animation: pulse2 0.8s ease-in-out infinite; }
+  @keyframes pulse2 { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .progress-bar-wrap {
+    height: 5px; background: #E8E8E8; border-radius: 3px; overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%; background: #1A1A1A; border-radius: 3px;
+    width: 0%; transition: width 0.5s ease;
+  }
+
+  /* ===== 加载遮罩（废弃，保留兼容）===== */
+  .loading-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(255,255,255,0.8);
+    z-index: 100;
+    align-items: center; justify-content: center; flex-direction: column;
+    gap: 14px;
+  }
+  .loading-overlay.show { display: flex; }
+  .loading-spinner {
+    width: 36px; height: 36px;
+    border: 2.5px solid #E0E0E0;
+    border-top-color: #1A1A1A;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { color: #666; font-size: 13px; }
+
+  /* ===== 响应式 ===== */
+  @media (max-width: 768px) {
+    .ticker-card { width: 140px; height: 78px; padding: 10px; }
+    .ticker-card .tc-price { font-size: 16px; }
+    .ticker-card .tc-name { font-size: 10px; }
+    .topbar { flex-wrap: wrap; height: auto; padding: 8px 10px; gap: 6px; }
+    .topbar .search-box { max-width: 100%; order: 3; flex: 1 1 100%; }
+    .topbar .hot-tags { display: none; }
+    .app-body { flex-direction: column; }
+    .login-panel {
+      width: 100%; min-width: 100%; flex-direction: row;
+      padding: 12px; gap: 10px; align-items: center;
+      border-right: none; border-bottom: 1px solid var(--border-light);
+    }
+    .login-panel .login-header { display: none; }
+    .login-panel .login-divider { display: none; }
+    .login-panel .form-group { margin-bottom: 0; flex: 1; }
+    .login-panel .login-hint { display: none; }
+    .main-content { max-width: 100%; padding: 8px; }
+    .predictions-row { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+    .pred-card { padding: 8px; }
+    .quote-strip { gap: 6px; padding: 8px 10px; }
+    .chart-wrapper { height: 220px; }
+    .history-panel { width: 100%; min-width: 100%; flex-direction: row; overflow-x: auto; padding: 8px 6px; gap: 5px; border-left: none; border-top: 1px solid var(--border-light); }
+    .history-panel h3 { display: none; }
+    .history-item { flex-shrink: 0; min-width: 120px; font-size: 10px; }
+    .clear-all { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== 卡片式滚动行情条 ===== -->
+<section class="ticker-section" id="tickerSection">
+  <div class="ticker-header">
+    <span class="ticker-title">📊 A股实时行情 <span class="dot">●</span> LIVE</span>
+  </div>
+  <div class="ticker-scroll-wrap">
+    <div class="ticker-track" id="tickerTrack">
+      <div class="ticker-card">
+        <div class="tc-top"><span class="tc-name">加载中...</span><span class="tc-code">------</span></div>
+        <div class="tc-price">--.--</div>
+        <div class="tc-bottom"><span class="tc-change">--%</span><span class="tc-extra">--</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 顶部导航 ===== -->
+<nav class="topbar">
+  <div class="logo">A股智能分析<span class="dot">·</span>助手</div>
+  <div class="search-box">
+    <input type="text" id="searchInput" placeholder="输入股票代码，如 600519" value="600519">
+    <button id="searchBtn">一键分析</button>
+  </div>
+  <div class="hot-tags">
+    <span>热门</span>
+    <a data-code="600519">茅台</a><a data-code="000001">平安银行</a>
+    <a data-code="300750">宁德时代</a><a data-code="002594">比亚迪</a>
+    <a data-code="688981">中芯国际</a><a data-code="601318">中国平安</a>
+  </div>
+</nav>
+
+<!-- ===== 加载遮罩 ===== -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-spinner"></div>
+  <div class="loading-text">AI正在深度分析中，预计5-10秒...</div>
+</div>
+
+<!-- ===== 主体三栏 ===== -->
+<div class="app-body" id="appBody">
+
+  <!-- ★ 左侧登录栏 ★ -->
+  <aside class="login-panel not-logged-in" id="loginPanel">
+    <div class="login-header">
+      <div class="avatar"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%"><circle cx="50" cy="55" r="40" fill="#FFF" stroke="#E0E0E0" stroke-width="2"/><polygon points="12,28 22,3 38,22" fill="#FFF" stroke="#E0E0E0" stroke-width="2"/><polygon points="88,28 78,3 62,22" fill="#FFF" stroke="#E0E0E0" stroke-width="2"/><polygon points="18,25 24,10 34,23" fill="#FFD4D4"/><polygon points="82,25 76,10 66,23" fill="#FFD4D4"/><circle cx="36" cy="48" r="5" fill="#444"/><circle cx="64" cy="48" r="5" fill="#444"/><circle cx="37" cy="46" r="1.5" fill="#FFF"/><circle cx="65" cy="46" r="1.5" fill="#FFF"/><ellipse cx="50" cy="60" rx="4" ry="2.5" fill="#FFAAAA"/><path d="M43,67 Q50,73 50,67 Q50,73 57,67" fill="none" stroke="#CCC" stroke-width="1.5" stroke-linecap="round"/><line x1="10" y1="54" x2="28" y2="57" stroke="#E8E8E8" stroke-width="1.2" stroke-linecap="round"/><line x1="10" y1="62" x2="28" y2="61" stroke="#E8E8E8" stroke-width="1.2" stroke-linecap="round"/><line x1="90" y1="54" x2="72" y2="57" stroke="#E8E8E8" stroke-width="1.2" stroke-linecap="round"/><line x1="90" y1="62" x2="72" y2="61" stroke="#E8E8E8" stroke-width="1.2" stroke-linecap="round"/></svg></div>
+      <h3>账户登录</h3>
+      <p>登录后方可查询分析</p>
+    </div>
+
+    <!-- 登录表单 -->
+    <div id="loginForm">
+      <div class="form-group">
+        <label>账户名</label>
+        <input type="text" id="loginUser" placeholder="请输入账户名">
+      </div>
+      <div class="form-group">
+        <label>密码</label>
+        <input type="password" id="loginPass" placeholder="请输入密码">
+      </div>
+      <button class="login-btn" id="loginBtn">登 录</button>
+    </div>
+
+    <!-- 登录后状态 -->
+    <div id="loggedInStatus" style="display:none;">
+      <div class="logged-in-status">
+        <span class="status-dot"></span>
+        <span class="status-text">已登录 · zjjai1</span>
+      </div>
+      <button class="logout-btn" id="logoutBtn">退出登录</button>
+    </div>
+  </aside>
+
+  <!-- ★ 主内容 ★ -->
+  <main class="main-content app-blur" id="mainContent">
+
+    <!-- ★ 分析进度区（分析中显示）★ -->
+    <div id="analysisProgress" style="display:none;">
+      <div class="progress-container">
+        <div class="progress-header">
+          <div class="progress-spinner"></div>
+          <div>
+            <div class="progress-title" id="progressTitle">正在分析 <span id="progressCode">600519</span></div>
+            <div class="progress-subtitle" id="progressSubtitle">正在获取数据...</div>
+          </div>
+        </div>
+        <div class="progress-steps" id="progressSteps">
+          <div class="progress-step" id="step1">
+            <span class="step-icon">⏳</span>
+            <span class="step-text">获取实时行情数据</span>
+            <span class="step-status"></span>
+          </div>
+          <div class="progress-step" id="step2">
+            <span class="step-icon">⏳</span>
+            <span class="step-text">加载90日K线走势</span>
+            <span class="step-status"></span>
+          </div>
+          <div class="progress-step" id="step3">
+            <span class="step-icon">⏳</span>
+            <span class="step-text">抓取全网最新资讯</span>
+            <span class="step-status"></span>
+          </div>
+          <div class="progress-step" id="step4">
+            <span class="step-icon">⏳</span>
+            <span class="step-text">AI模型深度分析</span>
+            <span class="step-status"></span>
+          </div>
+          <div class="progress-step" id="step5">
+            <span class="step-icon">⏳</span>
+            <span class="step-text">生成预测报告</span>
+            <span class="step-status"></span>
+          </div>
+        </div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-fill" id="progressBarFill"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ★ 结果区（分析完成后显示）★ -->
+    <div id="analysisResults" style="display:none;">
+
+      <!-- 预测结果置顶 -->
+      <div class="predictions-row" id="predictionsRow">
+        <div class="pred-card bullish" id="predCard3d">
+          <div class="pred-label">未来 3 日</div>
+          <div class="pred-icon">📈</div>
+          <div class="pred-direction">看涨 ▲</div>
+          <div class="pred-confidence">置信度 --%</div>
+          <div class="pred-bar"><div class="pred-bar-fill" style="width:0%"></div></div>
+          <div class="pred-summary">分析中...</div>
+        </div>
+        <div class="pred-card bullish" id="predCard5d">
+          <div class="pred-label">未来 5 日</div>
+          <div class="pred-icon">📈</div>
+          <div class="pred-direction">看涨 ▲</div>
+          <div class="pred-confidence">置信度 --%</div>
+          <div class="pred-bar"><div class="pred-bar-fill" style="width:0%"></div></div>
+          <div class="pred-summary">分析中...</div>
+        </div>
+        <div class="pred-card neutral" id="predCard7d">
+          <div class="pred-label">未来 7 日</div>
+          <div class="pred-icon">➡️</div>
+          <div class="pred-direction">震荡横盘</div>
+          <div class="pred-confidence">置信度 --%</div>
+          <div class="pred-bar"><div class="pred-bar-fill" style="width:0%"></div></div>
+          <div class="pred-summary">分析中...</div>
+        </div>
+        <div class="pred-card bearish" id="predCard30d">
+          <div class="pred-label">未来 1 月</div>
+          <div class="pred-icon">📉</div>
+          <div class="pred-direction">看跌 ▼</div>
+          <div class="pred-confidence">置信度 --%</div>
+          <div class="pred-bar"><div class="pred-bar-fill" style="width:0%"></div></div>
+          <div class="pred-summary">分析中...</div>
+        </div>
+      </div>
+
+      <!-- 行情摘要条 -->
+      <div class="quote-strip">
+        <div>
+          <div class="stock-name" id="stockName">--</div>
+          <div class="stock-code" id="stockCode">------</div>
+        </div>
+        <div class="price up" id="stockPrice">¥--.--</div>
+        <div class="change up" id="stockChange">--%</div>
+        <div class="info-item">今开<strong id="qOpen">--</strong></div>
+        <div class="info-item">最高<strong id="qHigh">--</strong></div>
+        <div class="info-item">最低<strong id="qLow">--</strong></div>
+        <div class="info-item">昨收<strong id="qPrev">--</strong></div>
+        <div class="info-item">成交量<strong id="qVol">--</strong></div>
+        <div class="info-item">换手率<strong id="qTurn">--</strong></div>
+      </div>
+
+      <!-- K线走势图 -->
+      <div class="section-title">📈 K线走势图（近90日 · 含均线）</div>
+      <div class="chart-card">
+        <div class="chart-header">
+          <h4 id="chartTitle">--</h4>
+          <div class="chart-legend">
+            <span><span class="leg-dot" style="background:#1A1A1A;"></span>收盘价</span>
+            <span><span class="leg-dot" style="background:#D4A017;"></span>MA5</span>
+            <span><span class="leg-dot" style="background:#4A90D9;"></span>MA10</span>
+            <span><span class="leg-dot" style="background:#A0A0A0;"></span>MA20</span>
+          </div>
+        </div>
+        <div class="chart-wrapper"><canvas id="klineChart"></canvas></div>
+      </div>
+
+      <!-- 深度分析依据 -->
+      <div class="section-title">📊 综合研判依据</div>
+      <div id="analysisCards">
+        <div class="analysis-card">
+          <h4>🔧 技术面分析</h4>
+          <ul class="reason-list" id="reasonsTech"></ul>
+        </div>
+        <div class="analysis-card">
+          <h4>📰 消息面分析</h4>
+          <ul class="reason-list" id="reasonsNews"></ul>
+        </div>
+        <div class="analysis-card">
+          <h4>💰 资金面分析</h4>
+          <ul class="reason-list" id="reasonsCapital"></ul>
+        </div>
+        <div class="analysis-card">
+          <h4>🏭 行业面分析</h4>
+          <ul class="reason-list" id="reasonsIndustry"></ul>
+        </div>
+        <div class="analysis-card">
+          <h4>🏛️ 政策面分析</h4>
+          <ul class="reason-list" id="reasonsPolicy"></ul>
+        </div>
+      </div>
+
+      <!-- 全网资讯 -->
+      <div class="section-title">📰 全网相关资讯</div>
+      <div class="news-card">
+        <ul class="news-list" id="newsList">
+          <li><span class="news-time">--</span><span class="news-title">暂无资讯</span><span class="news-source">--</span></li>
+        </ul>
+      </div>
+
+      <div class="disclaimer">
+        ⚠️ <strong>免责声明：</strong>本工具使用AI模型基于公开数据生成分析预测，所有预测结果仅供参考，不构成任何投资建议。股市有风险，投资需谨慎。
+      </div>
+
+    </div><!-- /analysisResults -->
+
+    <!-- 空状态（未查询时） -->
+    <div id="emptyState" style="text-align:center;padding:60px 20px;color:#999;">
+      <div style="font-size:48px;margin-bottom:16px;">🔍</div>
+      <div style="font-size:16px;font-weight:700;color:#555;margin-bottom:8px;">输入股票代码开始分析</div>
+      <div style="font-size:12px;">支持全部A股 · AI智能预测 · 多维度分析</div>
+    </div>
+
+  </main>
+
+  <!-- ★ 右侧历史栏 ★ -->
+  <aside class="history-panel app-blur" id="historyPanel">
+    <h3>📋 历史查询</h3>
+    <div id="historyList"></div>
+    <button class="clear-all" id="clearAllBtn">清空全部记录</button>
+  </aside>
+
+</div>
+
+<script>
+// ==================== 登录状态管理 ====================
+const VALID_USER = 'zjjai1';
+const VALID_PASS = '123456';
+let isLoggedIn = false;
+
+function updateLoginUI() {
+  const panel = document.getElementById('loginPanel');
+  const main = document.getElementById('mainContent');
+  const history = document.getElementById('historyPanel');
+  const form = document.getElementById('loginForm');
+  const status = document.getElementById('loggedInStatus');
+
+  if (isLoggedIn) {
+    panel.classList.remove('not-logged-in');
+    main.classList.add('off');
+    history.classList.add('off');
+    form.style.display = 'none';
+    status.style.display = 'block';
+  } else {
+    panel.classList.add('not-logged-in');
+    main.classList.remove('off');
+    history.classList.remove('off');
+    form.style.display = 'block';
+    status.style.display = 'none';
+  }
+}
+
+function doLogin() {
+  const user = document.getElementById('loginUser').value.trim();
+  const pass = document.getElementById('loginPass').value.trim();
+  if (user === VALID_USER && pass === VALID_PASS) {
+    isLoggedIn = true;
+    updateLoginUI();
+    loadTicker();
+  } else {
+    alert('账户名或密码错误！');
+  }
+}
+
+function doLogout() {
+  isLoggedIn = false;
+  updateLoginUI();
+}
+
+document.getElementById('loginBtn').addEventListener('click', doLogin);
+document.getElementById('logoutBtn').addEventListener('click', doLogout);
+// Enter key to login
+document.getElementById('loginPass').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') doLogin();
+});
+
+// ==================== 滚动行情条（卡片式）====================
+const HOT_STOCKS = [
+  { code: '600519', name: '贵州茅台', market: 'sh' },
+  { code: '000001', name: '平安银行', market: 'sz' },
+  { code: '300750', name: '宁德时代', market: 'sz' },
+  { code: '002594', name: '比亚迪',   market: 'sz' },
+  { code: '688981', name: '中芯国际', market: 'sh' },
+  { code: '601318', name: '中国平安', market: 'sh' },
+  { code: '000858', name: '五粮液',   market: 'sz' },
+  { code: '300059', name: '东方财富', market: 'sz' },
+  { code: '601398', name: '工商银行', market: 'sh' },
+  { code: '600036', name: '招商银行', market: 'sh' },
+  { code: '002415', name: '海康威视', market: 'sz' },
+  { code: '600276', name: '恒瑞医药', market: 'sh' },
+  { code: '601857', name: '中国石油', market: 'sh' },
+  { code: '300124', name: '汇川技术', market: 'sz' },
+  { code: '601899', name: '紫金矿业', market: 'sh' },
+];
+
+async function loadTicker() {
+  const codes = HOT_STOCKS.map(s => {
+    const prefix = s.market === 'sh' ? '1' : '0';
+    return `${prefix}.${s.code}`;
+  });
+  const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f2,f3,f12,f14,f15,f16&secids=${codes.join(',')}`;
+
+  try {
+    const resp = await fetch(url);
+    const data = await resp.json();
+    const items = data?.data?.diff || [];
+
+    const cards = items.map(item => {
+      const code = item.f12;
+      const name = item.f14;
+      const price = item.f2 != null ? (item.f2 / 1).toFixed(2) : '--.--';
+      const changePct = item.f3 != null ? item.f3 : 0;
+      const upClass = changePct >= 0 ? 'up' : 'down';
+      const sign = changePct >= 0 ? '+' : '';
+      const high = item.f15 != null ? (item.f15 / 1).toFixed(2) : '--';
+      const low = item.f16 != null ? (item.f16 / 1).toFixed(2) : '--';
+      const barWidth = Math.min(Math.abs(changePct) * 12, 100).toFixed(0);
+
+      return `<div class="ticker-card" data-code="${code}" title="${name} ${code} — 点击查看详情">
+        <div class="tc-top">
+          <span class="tc-name">${name}</span>
+          <span class="tc-code">${code}</span>
+        </div>
+        <div class="tc-price">${price}</div>
+        <div class="tc-bar"><div class="tc-bar-fill ${upClass}" style="width:${barWidth}%"></div></div>
+        <div class="tc-bottom">
+          <span class="tc-change ${upClass}">${sign}${changePct.toFixed(2)}%</span>
+          <span class="tc-extra">高${high} 低${low}</span>
+        </div>
+      </div>`;
+    }).join('');
+
+    const track = document.getElementById('tickerTrack');
+    track.innerHTML = cards + cards; // Duplicate for seamless scroll
+
+    // Click to search
+    track.querySelectorAll('.ticker-card').forEach(el => {
+      el.addEventListener('click', () => {
+        if (!isLoggedIn) {
+          alert('请先在左侧登录后再查询！');
+          return;
+        }
+        const code = el.dataset.code;
+        document.getElementById('searchInput').value = code;
+        loadStock(code);
+      });
+    });
+  } catch (e) {
+    console.error('Ticker load error:', e);
+  }
+}
+
+// ==================== 实时行情 ====================
+let currentCode = '600519';
+
+async function fetchQuote(code) {
+  const prefix = (code.startsWith('6') || code.startsWith('9')) ? '1' : '0';
+  const secid = `${prefix}.${code}`;
+  const url = `https://push2.eastmoney.com/api/qt/stock/get?secid=${secid}&fields=f43,f44,f45,f46,f47,f48,f50,f51,f52,f57,f58,f60,f116,f117,f162,f167,f168,f169,f170,f171`;
+  try {
+    const resp = await fetch(url);
+    const d = (await resp.json()).data;
+    if (!d) return null;
+    return {
+      code: d.f57, name: d.f58, price: d.f43 / 1, changePct: d.f170 / 1, changeAmt: d.f169 / 1,
+      open: d.f46 / 1, high: d.f44 / 1, low: d.f45 / 1, prevClose: d.f60 / 1,
+      volume: d.f47 / 1, amount: d.f48 / 1, turnover: d.f168 / 1, pe: d.f162 / 1, marketCap: d.f116 / 1,
+    };
+  } catch { return null; }
+}
+
+function updateQuoteUI(q) {
+  const isUp = q.changePct >= 0;
+  const cls = isUp ? 'up' : 'down';
+  const sign = isUp ? '+' : '';
+  document.getElementById('stockName').textContent = q.name;
+  document.getElementById('stockCode').textContent = `${q.code} · ${q.code.startsWith('6') ? '上海' : '深圳'}`;
+  const priceEl = document.getElementById('stockPrice');
+  priceEl.textContent = `¥${q.price.toFixed(2)}`;
+  priceEl.className = `price ${cls}`;
+  const changeEl = document.getElementById('stockChange');
+  changeEl.textContent = `${sign}${q.changePct.toFixed(2)}%`;
+  changeEl.className = `change ${cls}`;
+  document.getElementById('qOpen').textContent = q.open.toFixed(2);
+  document.getElementById('qHigh').textContent = q.high.toFixed(2);
+  document.getElementById('qLow').textContent = q.low.toFixed(2);
+  document.getElementById('qPrev').textContent = q.prevClose.toFixed(2);
+  const vol = q.volume > 10000 ? (q.volume / 10000).toFixed(1) + '万手' : q.volume + '手';
+  document.getElementById('qVol').textContent = vol;
+  document.getElementById('qTurn').textContent = q.turnover.toFixed(2) + '%';
+}
+
+// ==================== K线图表 ====================
+let klineChart = null;
+
+async function fetchKline(code) {
+  const prefix = (code.startsWith('6') || code.startsWith('9')) ? '1' : '0';
+  const secid = `${prefix}.${code}`;
+  const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57&klt=101&fqt=1&end=20500101&lmt=90`;
+  try {
+    const resp = await fetch(url);
+    const data = await resp.json();
+    return (data?.data?.klines || []).map(line => {
+      const parts = line.split(',');
+      return { date: parts[0], open: +parts[1], close: +parts[2], high: +parts[3], low: +parts[4], volume: +parts[5] };
+    });
+  } catch { return []; }
+}
+
+function calcMA(data, period) {
+  return data.map((_, i) => {
+    if (i < period - 1) return null;
+    let sum = 0;
+    for (let j = 0; j < period; j++) sum += data[i - j].close;
+    return sum / period;
+  });
+}
+
+function renderKlineChart(klines, name) {
+  const ctx = document.getElementById('klineChart').getContext('2d');
+  if (klineChart) klineChart.destroy();
+  const labels = klines.map(k => k.date.slice(5));
+  const closes = klines.map(k => k.close);
+  document.getElementById('chartTitle').textContent = `${name} ${currentCode} — 日K线（近90日）`;
+  klineChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: '收盘价', data: closes, borderColor: '#1A1A1A', backgroundColor: closes[closes.length-1]>=closes[0]?'rgba(0,0,0,0.03)':'rgba(0,0,0,0.02)', borderWidth: 1.8, pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: '#1A1A1A', fill: true, tension: 0.1 },
+        { label: 'MA5', data: calcMA(klines,5), borderColor: '#D4A017', borderWidth: 1, pointRadius: 0, fill: false, tension: 0.1 },
+        { label: 'MA10', data: calcMA(klines,10), borderColor: '#4A90D9', borderWidth: 1, pointRadius: 0, fill: false, tension: 0.1 },
+        { label: 'MA20', data: calcMA(klines,20), borderColor: '#A0A0A0', borderWidth: 1, pointRadius: 0, fill: false, tension: 0.1, borderDash: [3,2] },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { intersect: false, mode: 'index' },
+      plugins: { legend: { display: false }, tooltip: { backgroundColor: '#FFF', titleColor: '#1A1A1A', bodyColor: '#1A1A1A', borderColor: '#D0D0D0', borderWidth: 1, cornerRadius: 4, padding: 10 } },
+      scales: {
+        x: { grid: { color: '#F0F0F0' }, ticks: { color: '#999', font: { size: 10 }, maxTicksLimit: 10, maxRotation: 0 }, border: { display: false } },
+        y: { position: 'right', grid: { color: '#F0F0F0' }, ticks: { color: '#999', font: { size: 10 }, callback: v => v.toFixed(1) }, border: { display: false } },
+      },
+    }
+  });
+}
+
+// ==================== 历史记录 ====================
+function getHistory() { try { return JSON.parse(localStorage.getItem('astock_history') || '[]'); } catch { return []; } }
+function saveHistory(item) {
+  let h = getHistory().filter(x => x.code !== item.code);
+  h.unshift(item);
+  if (h.length > 20) h = h.slice(0, 20);
+  localStorage.setItem('astock_history', JSON.stringify(h));
+}
+function deleteHistory(code) {
+  localStorage.setItem('astock_history', JSON.stringify(getHistory().filter(x => x.code !== code)));
+}
+function renderHistory() {
+  const history = getHistory();
+  const container = document.getElementById('historyList');
+  if (history.length === 0) {
+    container.innerHTML = '<div class="empty-state">暂无查询记录<br/>输入代码开始分析</div>';
+    return;
+  }
+  container.innerHTML = history.map(h => {
+    const upClass = h.changePct >= 0 ? 'up' : 'down';
+    const sign = h.changePct >= 0 ? '+' : '';
+    const activeClass = h.code === currentCode ? ' active' : '';
+    return `<div class="history-item${activeClass}" data-code="${h.code}">
+      <div class="hi-info"><div class="hi-code">${h.code}</div><div class="hi-name">${h.name}</div></div>
+      <span class="hi-change ${upClass}">${sign}${h.changePct.toFixed(2)}%</span>
+      <button class="hi-delete" data-code="${h.code}">✕</button></div>`;
+  }).join('');
+  container.querySelectorAll('.history-item').forEach(el => {
+    el.addEventListener('click', function(e) {
+      if (e.target.classList.contains('hi-delete')) return;
+      if (!isLoggedIn) { alert('请先在左侧登录后再查询！'); return; }
+      const code = this.dataset.code;
+      document.getElementById('searchInput').value = code;
+      loadStock(code);
+    });
+  });
+  container.querySelectorAll('.hi-delete').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      deleteHistory(this.dataset.code);
+      renderHistory();
+    });
+  });
+}
+
+// ==================== 进度控制 ====================
+function setProgress(stepNum, status, text, subtitle) {
+  const steps = document.querySelectorAll('.progress-step');
+  const bar = document.getElementById('progressBarFill');
+  const subEl = document.getElementById('progressSubtitle');
+  const icons = ['', '📊', '📈', '📰', '🤖', '📋'];
+
+  steps.forEach((s, i) => {
+    const idx = i + 1;
+    if (idx < stepNum) {
+      s.className = 'progress-step done';
+      s.querySelector('.step-icon').textContent = '✅';
+      s.querySelector('.step-status').textContent = '完成';
+    } else if (idx === stepNum) {
+      s.className = 'progress-step active';
+      s.querySelector('.step-icon').textContent = icons[idx];
+      s.querySelector('.step-status').textContent = status;
+    } else {
+      s.className = 'progress-step';
+      s.querySelector('.step-icon').textContent = '⏳';
+      s.querySelector('.step-status').textContent = '';
+    }
+  });
+
+  bar.style.width = (stepNum * 20) + '%';
+  if (subtitle) subEl.textContent = subtitle;
+}
+
+async function runProgressSteps(code, q, klines) {
+  const steps = [
+    { delay: 400,  text: '获取实时行情数据', sub: '正在连接东方财富行情接口...' },
+    { delay: 500,  text: '加载90日K线走势', sub: '计算MA5/MA10/MA20均线...' },
+    { delay: 700,  text: '抓取全网最新资讯', sub: '正在检索相关新闻及公告...' },
+    { delay: 1200, text: 'AI模型深度分析', sub: '综合技术面、消息面、资金面、行业面、政策面...' },
+    { delay: 500,  text: '生成预测报告', sub: '正在整理分析结果...' },
+  ];
+
+  for (let i = 0; i < steps.length; i++) {
+    setProgress(i + 1, '处理中...', steps[i].text, steps[i].sub);
+    await new Promise(r => setTimeout(r, steps[i].delay));
+  }
+
+  // All done
+  setProgress(5, '', '', '');
+  document.getElementById('progressSubtitle').textContent = '分析完成 ✓';
+  document.getElementById('progressBarFill').style.width = '100%';
+  await new Promise(r => setTimeout(r, 300));
+}
+
+// ==================== 主流程 ====================
+async function loadStock(code) {
+  if (!isLoggedIn) {
+    alert('请先在左侧登录后再查询！');
+    return;
+  }
+
+  currentCode = code;
+
+  // Hide everything, show progress
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('analysisResults').style.display = 'none';
+  document.getElementById('analysisProgress').style.display = 'block';
+  document.getElementById('progressCode').textContent = code;
+
+  // Reset steps
+  document.querySelectorAll('.progress-step').forEach(s => {
+    s.className = 'progress-step';
+    s.querySelector('.step-icon').textContent = '⏳';
+    s.querySelector('.step-status').textContent = '';
+  });
+  document.getElementById('progressBarFill').style.width = '0%';
+  document.getElementById('progressSubtitle').textContent = '正在获取数据...';
+
+  // Fetch data first (this is real)
+  let q = null, klines = [];
+  try {
+    setProgress(1, '处理中...', '获取实时行情数据', '正在连接东方财富行情接口...');
+    q = await fetchQuote(code);
+    if (!q) throw new Error('no data');
+
+    setProgress(1, '', '', '');
+    document.querySelector('#step1').className = 'progress-step done';
+    document.querySelector('#step1 .step-icon').textContent = '✅';
+    document.querySelector('#step1 .step-status').textContent = '完成';
+    document.getElementById('progressBarFill').style.width = '20%';
+
+    setProgress(2, '处理中...', '加载90日K线走势', '计算MA5/MA10/MA20均线...');
+    klines = await fetchKline(code);
+
+    document.querySelector('#step2').className = 'progress-step done';
+    document.querySelector('#step2 .step-icon').textContent = '✅';
+    document.querySelector('#step2 .step-status').textContent = '完成';
+    document.getElementById('progressBarFill').style.width = '40%';
+
+    // Simulate remaining steps
+    await runProgressSteps(code, q, klines);
+
+  } catch (e) {
+    alert('无法获取该股票数据，请检查代码是否正确。');
+    document.getElementById('analysisProgress').style.display = 'none';
+    document.getElementById('emptyState').style.display = 'block';
+    return;
+  }
+
+  // Update UI with real data
+  updateQuoteUI(q);
+  renderKlineChart(klines, q.name);
+  saveHistory({ code: q.code, name: q.name, changePct: q.changePct });
+  renderHistory();
+
+  // Fill in placeholder analysis content (in real app, AI returns this)
+  fillAnalysisContent(q, klines);
+
+  // Switch to results
+  document.getElementById('analysisProgress').style.display = 'none';
+  document.getElementById('analysisResults').style.display = 'block';
+
+  // Scroll to top of results
+  document.getElementById('analysisResults').scrollIntoView({ behavior: 'smooth' });
+}
+
+function fillAnalysisContent(q, klines) {
+  const isUp = q.changePct >= 0;
+  const trend = isUp ? '上涨' : '下跌';
+  const changeAbs = Math.abs(q.changePct).toFixed(2);
+
+  // Update prediction cards roughly based on real data
+  const conf3 = isUp ? 60 + Math.floor(Math.random()*15) : 40 + Math.floor(Math.random()*15);
+  const conf5 = isUp ? 50 + Math.floor(Math.random()*15) : 35 + Math.floor(Math.random()*15);
+  const conf7 = 45 + Math.floor(Math.random()*15);
+  const conf30 = isUp ? 35 + Math.floor(Math.random()*15) : 40 + Math.floor(Math.random()*15);
+
+  updatePredCard('predCard3d', '3 日', conf3, conf3 > 55 ? 'bullish' : (conf3 < 45 ? 'bearish' : 'neutral'));
+  updatePredCard('predCard5d', '5 日', conf5, conf5 > 55 ? 'bullish' : (conf5 < 45 ? 'bearish' : 'neutral'));
+  updatePredCard('predCard7d', '7 日', conf7, conf7 > 55 ? 'bullish' : (conf7 < 45 ? 'bearish' : 'neutral'));
+  updatePredCard('predCard30d', '1 月', conf30, conf30 > 55 ? 'bullish' : (conf30 < 45 ? 'bearish' : 'neutral'));
+
+  // Fill analysis reasons (placeholder - AI would generate these)
+  document.getElementById('reasonsTech').innerHTML = `
+    <li><span class="idx">1</span><strong>均线系统：</strong>近期5日均线${isUp?'上穿':'下穿'}20日均线，短期均线呈${isUp?'多头':'空头'}排列，股价${isUp?'站稳':'跌破'}5日均线。</li>
+    <li><span class="idx">2</span><strong>K线形态：</strong>近3个交易日${isUp?'连续收阳':'走势偏弱'}，今日K线实体较${isUp?'长':'短'}，${isUp?'买方力量强劲':'卖压较大'}。</li>
+    <li><span class="idx">3</span><strong>成交量分析：</strong>近5日成交量${isUp?'温和放大':'萎缩'}，${isUp?'价涨量增配合良好':'量价背离值得警惕'}。</li>
+    <li><span class="idx">4</span><strong>MACD指标：</strong>MACD${isUp?'红柱持续放大，多头趋势形成中':'绿柱缩短，但有进一步走弱风险'}。</li>`;
+  document.getElementById('reasonsNews').innerHTML = `
+    <li><span class="idx">1</span><strong>业绩动态：</strong>${q.name}最新财报显示经营状况${isUp?'稳健':'面临挑战'}，${isUp?'超出市场预期':'需关注后续变化'}。</li>
+    <li><span class="idx">2</span><strong>市场舆情：</strong>近期关于该股的舆情${isUp?'偏正面':'偏负面'}，${isUp?'多家机构给予积极评价':'投资者需谨慎对待'}。</li>`;
+  document.getElementById('reasonsCapital').innerHTML = `
+    <li><span class="idx">1</span><strong>主力资金：</strong>近期主力资金${isUp?'呈净流入态势':'有流出迹象'}，${isUp?'机构布局意愿较强':'需关注资金动向'}。</li>
+    <li><span class="idx">2</span><strong>北向资金：</strong>沪股通持仓${isUp?'持续增加':'有所减少'}，外资态度${isUp?'积极':'谨慎'}。</li>`;
+  document.getElementById('reasonsIndustry').innerHTML = `
+    <li><span class="idx">1</span><strong>板块表现：</strong>所属行业板块近期${isUp?'整体走强':'表现平淡'}，板块内相关个股${isUp?'联动上涨':'分化明显'}。</li>
+    <li><span class="idx">2</span><strong>行业趋势：</strong>行业基本面${isUp?'持续改善':'存在不确定性'}，中期前景${isUp?'向好':'需观察'}。</li>`;
+  document.getElementById('reasonsPolicy').innerHTML = `
+    <li><span class="idx">1</span><strong>政策环境：</strong>当前政策对行业${isUp?'偏友好':'影响中性'}，${isUp?'利好因素正在累积':'需关注政策变化'}。</li>
+    <li><span class="idx">2</span><strong>宏观因素：</strong>宏观经济${isUp?'复苏态势良好':'仍存不确定性'}，对股市整体影响${isUp?'偏积极':'需持续关注'}。</li>`;
+
+  // Fill news placeholder
+  document.getElementById('newsList').innerHTML = `
+    <li><span class="news-time">实时</span><span class="news-title">${q.name}当前报${q.price.toFixed(2)}元，日内${isUp?'涨':'跌'}幅${changeAbs}%，成交活跃</span><span class="news-source">实时行情</span></li>
+    <li><span class="news-time">实时</span><span class="news-title">该股今日成交量${q.volume > 10000 ? (q.volume/10000).toFixed(1)+'万手' : q.volume+'手'}，换手率${q.turnover.toFixed(2)}%</span><span class="news-source">行情数据</span></li>
+    <li><span class="news-time">--</span><span class="news-title">（正式版将接入AI实时抓取全网最新相关资讯）</span><span class="news-source">系统提示</span></li>`;
+}
+
+function updatePredCard(id, label, confidence, direction) {
+  const card = document.getElementById(id);
+  const iconMap = { bullish: '📈', bearish: '📉', neutral: '➡️' };
+  const dirMap = { bullish: '看涨 ▲', bearish: '看跌 ▼', neutral: '震荡横盘' };
+  const sumMap = {
+    bullish: ['技术面偏多，量能配合良好', '均线支撑有效，多头趋势延续', '资金持续流入，短期看涨'],
+    bearish: ['上行压力较大，短期承压', '主力资金流出，谨慎看跌', '技术指标偏空，注意风险'],
+    neutral: ['多空均衡，等待方向选择', '区间震荡格局未变', '量能不足，方向不明朗'],
+  };
+
+  card.className = 'pred-card ' + direction;
+  card.querySelector('.pred-label').textContent = '未来 ' + label;
+  card.querySelector('.pred-icon').textContent = iconMap[direction];
+  card.querySelector('.pred-direction').textContent = dirMap[direction];
+  card.querySelector('.pred-confidence').textContent = '置信度 ' + confidence + '%';
+  card.querySelector('.pred-bar-fill').style.width = confidence + '%';
+  const sums = sumMap[direction];
+  card.querySelector('.pred-summary').textContent = sums[Math.floor(Math.random() * sums.length)];
+}
+
+// ==================== 事件绑定 ====================
+document.getElementById('searchBtn').addEventListener('click', () => {
+  if (!isLoggedIn) { alert('请先在左侧登录后再查询！'); return; }
+  const code = document.getElementById('searchInput').value.trim();
+  if (!/^\d{6}$/.test(code)) { alert('请输入6位有效股票代码'); return; }
+  loadStock(code);
+});
+document.getElementById('searchInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    if (!isLoggedIn) { alert('请先在左侧登录后再查询！'); return; }
+    const code = e.target.value.trim();
+    if (!/^\d{6}$/.test(code)) { alert('请输入6位有效股票代码'); return; }
+    loadStock(code);
+  }
+});
+document.querySelectorAll('.hot-tags a').forEach(tag => {
+  tag.addEventListener('click', function() {
+    if (!isLoggedIn) { alert('请先在左侧登录后再查询！'); return; }
+    document.getElementById('searchInput').value = this.dataset.code;
+    loadStock(this.dataset.code);
+  });
+});
+document.getElementById('clearAllBtn').addEventListener('click', () => {
+  if (confirm('确定清空全部历史查询记录？')) { localStorage.removeItem('astock_history'); renderHistory(); }
+});
+
+// ==================== 启动 ====================
+function init() {
+  // Start with logged-out state
+  isLoggedIn = false;
+  updateLoginUI();
+  loadTicker();
+  renderHistory();
+  // Refresh ticker every 10s
+  setInterval(loadTicker, 10000);
+}
+init();
+</script>
+</body>
+</html>
